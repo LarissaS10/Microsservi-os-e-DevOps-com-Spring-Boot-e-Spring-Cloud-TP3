@@ -2,22 +2,16 @@
 
 ## Arquitetura da solução
 
-O sistema é composto por microsserviços independentes, registrados num Discovery Server e acessados através de um API Gateway, que é o único ponto de entrada externo:
-                    ┌──────────────────┐
-                    │  Eureka Server    │
-                    │   (porta 8761)    │
-                    └─────────▲─────────┘
-                              │ registro/descoberta
-    ┌─────────────┬──────────┼───────────┬──────────────┐
-    │             │          │           │              │
+O sistema é composto por microsserviços independentes, registrados num Discovery Server e acessados através de um API Gateway, que é o único ponto de entrada externo.
 
-┌───────▼──────┐ ┌────▼───────┐ ┌▼─────────┐ ┌▼───────────┐ ┌▼────────────┐
-│ Config Server│ │API Gateway │ │auth-service│ │produtos-svc│ │vendas/clientes│
-│ (porta 8888)│ │(porta 8085)│ │(porta 8084)│ │(porta 8081)│ │ (8082/8083) │
-└──────────────┘ └─────┬──────┘ └────────────┘ └────────────┘ └───────────────┘
-│ valida token em toda requisição (exceto login/cadastro/refresh)
-▼
-cliente externo
+**Componentes:**
+- **Eureka Server** (porta 8761) — Discovery Server, onde todos os outros se registram
+- **Config Server** (porta 8888) — configuração centralizada
+- **API Gateway** (porta 8085) — ponto único de entrada; valida o token em toda requisição, exceto login/cadastro/refresh
+- **auth-service** (porta 8084) — cadastro, login e refresh de token
+- **produtos-service** (porta 8081) — rotas protegidas
+- **vendas-service** (porta 8082) — rotas protegidas
+- **clientes-service** (porta 8083) — rotas protegidas
 
 
 O **auth-service** é totalmente independente dos demais: tem seu próprio banco de dados (H2 em memória, `authdb`), não chama nem depende de nenhum outro microsserviço de negócio para funcionar.
