@@ -1,0 +1,4 @@
+apiVersion: v1                # versão "básica" da API do Kubernetes
+kind: Namespace                # tipo do objeto: um Namespace
+metadata:
+  name: ecommerce   # o nome dessa pasta — vamos usar "-n ecommerce" em quase todo comando

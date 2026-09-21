@@ -1,0 +1,124 @@
+services:
+
+  # --- Service Discovery ---
+  eureka-server:
+    build: ./eureka-server        # usa o Dockerfile dessa pasta pra construir a imagem
+    container_name: eureka-server # nome fixo do container (e nome que os outros usam na rede)
+    ports:
+      - "8761:8761"                # porta_da_maquina:porta_do_container -> localhost:8761
+    networks:
+      - microservicos-net           # entra na rede compartilhada com os outros serviços
+
+  # --- Configurações centralizadas (lê o config-repo) ---
+  config-server:
+    build: ./config-server
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    volumes:
+      # monta a pasta config-repo (do seu Mac) dentro do container em /config-repo
+      - ./config-repo:/config-repo
+    environment:
+      # backend "native" = le os .properties direto da pasta montada acima.
+      # O config-repo/ e uma pasta comum, sem .git, entao o backend git
+      # (spring.cloud.config.server.git.uri) nao funciona aqui: ele exige um
+      # repositorio Git de verdade e falha com "No .git at file:///config-repo".
+      # Sem configuracao, os servicos subiriam sem server.port, na porta 8080,
+      # e as portas publicadas abaixo apontariam para onde ninguem escuta.
+      - SPRING_PROFILES_ACTIVE=native
+      - SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS=file:///config-repo
+    networks:
+      - microservicos-net
+
+  # --- Serviço de produtos ---
+  produtos-service:
+    build: ./produtos-service
+    container_name: produtos-service
+    depends_on:                    # só cria este container depois dos dois abaixo
+      - eureka-server               # (não garante que já estejam "prontos", só criados)
+      - config-server
+    environment:
+      # troca "localhost" por "config-server", o nome do serviço na rede Docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      # ativa o profile "docker", que faz o config-server servir também
+      # produtos-service-docker.properties (sobrescreve a URL do Eureka)
+      - SPRING_PROFILES_ACTIVE=docker
+      # troca "localhost" por "eureka-server", idem
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    ports:
+      - "8081:8081"
+    networks:
+      - microservicos-net
+
+  # --- Serviço de vendas ---
+  vendas-service:
+    build: ./vendas-service
+    container_name: vendas-service
+    depends_on:
+      - eureka-server
+      - config-server
+    environment:
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      # ativa o profile "docker", que faz o config-server servir também
+      # vendas-service-docker.properties (sobrescreve a URL do Eureka)
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    ports:
+      - "8082:8082"
+    networks:
+      - microservicos-net
+  
+  clientes-service:
+    build: ./clientes-service
+    container_name: clientes-service
+    depends_on:
+      - eureka-server
+      - config-server
+    environment:
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      # ativa o profile "docker", que faz o config-server servir também
+      # vendas-service-docker.properties (sobrescreve a URL do Eureka)
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    ports:
+      - "8083:8083"
+    networks:
+      - microservicos-net
+
+  # --- Servico de cadastro de usuarios ---
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    depends_on:
+      - eureka-server
+      - config-server
+    environment:
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      # ativa o profile "docker", que faz o config-server servir também
+      # auth-service-docker.properties (sobrescreve a URL do Eureka)
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    ports:
+      - "8084:8084"
+    networks:
+      - microservicos-net
+
+  # --- API Gateway (porta de entrada única, roteia por nome de serviço no Eureka) ---
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    depends_on:
+      - eureka-server               # gateway só precisa do eureka pra descobrir os serviços
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    ports:
+      - "8085:8085"
+    networks:
+      - microservicos-net
+
+# Rede virtual que conecta todos os containers acima. É o que permite
+# um container chamar o outro pelo nome (ex: http://eureka-server:8761)
+# em vez de precisar saber um IP.
+networks:
+  microservicos-net:
+    driver: bridge   # tipo padrão de rede local isolada do Docker

@@ -1,0 +1,157 @@
+apiVersion: v1
+kind: ConfigMap                  # guarda os arquivos .properties do config-repo
+metadata:
+  name: config-repo-files          # nome do ConfigMap
+  namespace: ecommerce
+data:
+  auth-service.properties: |
+    server.port=8084
+
+    server.error.include-message=always
+
+    # H2 em memoria
+    spring.datasource.url=jdbc:h2:mem:authdb
+    spring.datasource.driver-class-name=org.h2.Driver
+    spring.datasource.username=sa
+    spring.datasource.password=
+
+    spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+    spring.jpa.hibernate.ddl-auto=update
+    spring.jpa.show-sql=true
+
+    # Console web do H2, acessivel em http://localhost:8084/h2-console
+    spring.h2.console.enabled=true
+    spring.h2.console.path=/h2-console
+
+    # Registro no Eureka
+    eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+    eureka.client.fetch-registry=true
+    eureka.client.register-with-eureka=true
+    eureka.instance.prefer-ip-address=true
+  auth-service-docker.properties: |
+    eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+  clientes-service.properties: |
+    server.port=8083
+
+    # H2 em memoria
+    spring.datasource.url=jdbc:h2:mem:clientesdb
+    spring.datasource.driver-class-name=org.h2.Driver
+    spring.datasource.username=sa
+    spring.datasource.password=
+
+    spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+    spring.jpa.hibernate.ddl-auto=update
+    spring.jpa.show-sql=true
+
+    # Console web do H2, acessivel em http://localhost:8083/h2-console
+    spring.h2.console.enabled=true
+    spring.h2.console.path=/h2-console
+
+    # Registro no Eureka
+    eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+    eureka.client.fetch-registry=true
+    eureka.client.register-with-eureka=true
+    eureka.instance.prefer-ip-address=true
+  clientes-service-docker.properties: |
+    eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+  produtos-service.properties: |
+    server.port=8081
+
+    # H2 em memoria
+    spring.datasource.url=jdbc:h2:mem:produtosdb
+    spring.datasource.driver-class-name=org.h2.Driver
+    spring.datasource.username=sa
+    spring.datasource.password=
+
+    spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+    spring.jpa.hibernate.ddl-auto=update
+    spring.jpa.show-sql=true
+
+    # Console web do H2, acessivel em http://localhost:8081/h2-console
+    spring.h2.console.enabled=true
+    spring.h2.console.path=/h2-console
+
+    # Registro no Eureka
+    eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+    eureka.client.fetch-registry=true
+    eureka.client.register-with-eureka=true
+    eureka.instance.prefer-ip-address=true
+  produtos-service-docker.properties: |
+    eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+  vendas-service.properties: |
+    server.port=8082
+
+    # H2 em memoria
+    spring.datasource.url=jdbc:h2:mem:vendasdb
+    spring.datasource.driver-class-name=org.h2.Driver
+    spring.datasource.username=sa
+    spring.datasource.password=
+
+    spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+    spring.jpa.hibernate.ddl-auto=update
+    spring.jpa.show-sql=true
+
+    spring.h2.console.enabled=true
+    spring.h2.console.path=/h2-console
+
+    eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+    eureka.client.fetch-registry=true
+    eureka.client.register-with-eureka=true
+    eureka.instance.prefer-ip-address=true
+  vendas-service-docker.properties: |
+    eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+---
+apiVersion: apps/v1            # versão da API do Kubernetes usada aqui
+kind: Deployment                # mantém sempre a quantidade certa de Pods rodando
+metadata:
+  name: config-server            # nome do Deployment
+  namespace: ecommerce       # em qual pasta (Namespace) ele mora
+spec:
+  replicas: 1                    # quantos Pods manter no ar
+  selector:
+    matchLabels:
+      app: config-server          # diz quais Pods pertencem a este Deployment
+  template:                      # o molde usado pra criar cada Pod
+    metadata:
+      labels:
+        app: config-server        # etiqueta do Pod — precisa ser igual à de cima
+    spec:
+      containers:
+        - name: config-server        # nome do container dentro do Pod
+          image: config-server:1.0        # imagem buildada no Passo 06
+          imagePullPolicy: IfNotPresent   # usa a imagem já carregada — não baixa de fora
+          ports:
+            - containerPort: 8888         # porta que o container escuta
+          env:
+            # backend "native" = le arquivos soltos do filesystem.
+            # NAO use o backend git aqui: o ConfigMap monta .properties numa
+            # pasta comum, sem .git, e o git backend falha com "No .git at ...".
+            - name: SPRING_PROFILES_ACTIVE
+              value: "native"
+            - name: SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS
+              value: "file:///config-repo"
+          volumeMounts:                        # onde o volume abaixo aparece dentro do container
+            - name: config-repo
+              mountPath: /config-repo             # o ConfigMap "vira" arquivos nesta pasta
+          readinessProbe:                 # so fica Ready quando SERVIR config de verdade
+            httpGet:                          # TCP em 8888 responderia mesmo com o backend quebrado
+              path: /produtos-service/docker
+              port: 8888
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:                       # declara o volume que o volumeMounts acima usa
+        - name: config-repo            # precisa ter o mesmo nome do volumeMounts
+          configMap:
+            name: config-repo-files      # arquivos vêm do ConfigMap definido acima
+---
+apiVersion: v1
+kind: Service                    # cria um endereço fixo, que nunca muda
+metadata:
+  name: config-server              # vira o endereço: http://config-server:8888
+  namespace: ecommerce
+spec:
+  selector:
+    app: config-server                # envia tráfego pros Pods que tiverem essa etiqueta
+  ports:
+    - port: 8888                      # porta do próprio Service
+      targetPort: 8888                 # porta real dentro do Pod, pra onde ele repassa

@@ -1,0 +1,37 @@
+apiVersion: apps/v1            # versão da API do Kubernetes usada aqui
+kind: Deployment                # mantém sempre a quantidade certa de Pods rodando
+metadata:
+  name: eureka-server            # nome do Deployment
+  namespace: ecommerce       # em qual pasta (Namespace) ele mora
+spec:
+  replicas: 1                    # quantos Pods manter no ar
+  selector:
+    matchLabels:
+      app: eureka-server          # diz quais Pods pertencem a este Deployment
+  template:                      # o molde usado pra criar cada Pod
+    metadata:
+      labels:
+        app: eureka-server         # etiqueta do Pod — precisa ser igual à de cima
+    spec:
+      containers:
+        - name: eureka-server        # nome do container dentro do Pod
+          image: eureka-server:1.0        # imagem buildada no Passo 06
+          imagePullPolicy: IfNotPresent   # usa a imagem já carregada — não baixa de fora
+          ports:
+            - containerPort: 8761         # porta que o container escuta
+          readinessProbe:                 # checagem de saúde do container
+            tcpSocket: { port: 8761 }       # considera saudável quando essa porta responder
+            initialDelaySeconds: 15        # espera 15s antes da 1ª checagem
+            periodSeconds: 10              # depois, checa de novo a cada 10s
+---
+apiVersion: v1
+kind: Service                    # cria um endereço fixo, que nunca muda
+metadata:
+  name: eureka-server              # vira o endereço: http://eureka-server:8761
+  namespace: ecommerce
+spec:
+  selector:
+    app: eureka-server                # envia tráfego pros Pods que tiverem essa etiqueta
+  ports:
+    - port: 8761                      # porta do próprio Service
+      targetPort: 8761                 # porta real dentro do Pod, pra onde ele repassa
